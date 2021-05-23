@@ -1,0 +1,23 @@
+{
+  "name": "devsparkle-backend",
+  "version": "1.0.0",
+  "description": "devsparkle.ir backend",
+  "main": "server.js",
+  "scripts": {
+    "test": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "Node.js",
+    "MongoDB",
+    "devsparkle"
+  ],
+  "author": "Taha Dostifam",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "mongoose": "^5.12.10"
+  }
+}
