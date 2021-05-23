@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const UsersModel = require("../models/Users");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const settings = require("../settings");
 
 function saveState(req, res) {
   return new Promise(async (_success, _error) => {
@@ -33,7 +35,7 @@ function checkUserExist(email) {
   });
 }
 
-router.post("/signin", (req, res, next) => {
+router.post("/signup", (req, res, next) => {
   const user = {
     full_name: req.body.full_name,
     email: req.body.email,
@@ -80,6 +82,49 @@ router.post("/signin", (req, res, next) => {
   } else {
     res.send("fields incorrect");
   }
+});
+
+router.post("/signin", (req, res, next) => {
+  const user = {
+    email: req.body.email,
+    password: req.body.password /* recaptcha: req.body.recaptcha */,
+    /* REVIEW */
+  };
+  checkUserExist(user.email).then(
+    () => {
+      // User Not Exist
+      res.json({
+        code: 404,
+        message: "user not exist",
+      });
+    },
+    () => {
+      // User Exist
+      const findedUser = UsersModel.findOne(
+        {
+          email: user.email,
+        },
+        (err, data) => {
+          if (err) return console.log(err);
+          bcrypt.compare(user.password, data.password, function (err, result) {
+            if (result) {
+              jwt.sign({ data: data }, settings.jwt_password, (err, token) => {
+                res.json({
+                  user_info: data,
+                  token: token,
+                });
+              });
+            } else {
+              res.json({
+                code: 401,
+                message: "email or password incorrect",
+              });
+            }
+          });
+        }
+      );
+    }
+  );
 });
 
 module.exports = router;
