@@ -1,29 +1,22 @@
 const settings = require("../../settings");
 const nodemailer = require("nodemailer");
 
-const mail = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
+let transporter = nodemailer.createTransport({
+  service: "gmail",
   auth: {
-    user: settings.email_service.address,
-    pass: settings.email_service.password,
+    user: "devsparkle.ir@gmail.com",
+    pass: "Taha0406213",
   },
 });
 
-function sendMail(opts, sended) {
-  const mailOpions = {
-    from: settings.email_service.address,
-    to: opts.to,
-    subject: opts.subject,
-    html: opts.body,
-  };
-  mail.sendMail(opts, function (error, response) {
-    if (error) {
-      return console.error(error);
-    }
-    sended();
+async function sendMail(params, sended) {
+  await transporter.sendMail({
+    from: "devsparkle.ir@gmail.com",
+    to: params.to,
+    subject: params.subject,
+    html: params.body,
   });
+  sended();
 }
 
 module.exports = {

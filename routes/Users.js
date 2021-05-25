@@ -118,7 +118,7 @@ router.post("/signin", (req, res, next) => {
             email: user.email,
           },
           (err, data) => {
-            if (err) return console.log(err);
+            if (err) return console.error(err);
             bcrypt.compare(
               user.password,
               data.password,
@@ -242,75 +242,24 @@ router.post("/send/email/verification", (req, res, next) => {
         // User Exist
         const EmailVerifyToken = await jwt.sign(
           { email: user.email },
-          settings.jwt_password
+          settings.jwt_password,
+          {
+            expiresIn: "5h",
+          }
         );
 
-        mailService.sendMail(
+        await mailService.sendMail(
           {
             to: user.email,
             subject: "devsparkle.ir - تایید ایمیل",
             body: `
             <html>
-              <head>
-                <title>devsparkle.ir - تایید ایمیل</title>
-                <style>
-                  @import url("https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Quicksand:wght@300;400;500;600;700&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;1,100;1,300;1,400;1,500&display=swap");
-                  * {
-                    padding: 0;
-                    margin: 0;
-                    box-sizing: border-box;
-                  }
-                  body {
-                    background-color: #fff;
-                    font-family: "Quicksand", "Roboto";
-                  }
-                  #headerTop {
-                    width: 100%;
-                    height: 70px;
-                    background-color: #1a5cff;
-                    display: flex;
-                    align-items: center;
-                    justify-content: flex-start;
-                    user-select: none;
-                  }
-                  #brand {
-                    padding: 0 20px;
-                  }
-                  #brand,
-                  #brand h1 {
-                    color: #fff;
-                    font-family: "Comfortaa";
-                    font-size: 24px;
-                  }
-                  .body {
-                    position: absolute;
-                    width: 100%;
-                    top: 70px;
-                    padding: 20px;
-                    text-align: right;
-                    user-select: text;
-                  }
-                  .help-text {
-                    color: #666;
-                  }
-                </style>
-              </head>
               <body>
-                <div id="headerTop">
-                  <div id="brand">
-                    <h1>devsparkle.ir</h1>
-                  </div>
-                  <div class="body">
-                    <div class="help-text" dir="rtl">
-                      برای تایید ایمیل روی لینک زیر کلیک کنید.
-                    </div>
-                    <div class="content">
-                      <a href="http://127.0.0.1:/8080/verify/email/${EmailVerifyToken}
-                        http://127.0.0.1:/8080/verify/email/${EmailVerifyToken}
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                <a href="http://127.0.0.1:/8080/verify/email/${EmailVerifyToken}"
+                  <span style="color: #4245f5; font-weight:bold;direction: rtl; font-size: 15px; text-decoration: none;">برای تایید ایمیل کلیک کنید</span>
+                </a>
+                <br>
+                <span style="margin-top: 10px; color: #777">حداکثر زمان برای فعال کردن لینک 5 ساعت است</span>
               </body>
             </html>
             `,
@@ -320,10 +269,81 @@ router.post("/send/email/verification", (req, res, next) => {
               code: 200,
               message: "email verification sended",
             });
+            next();
           }
         );
       }
     );
+  } else {
+    res.json({
+      code: 400,
+      message: "fields incorrect",
+    });
+    next();
+  }
+});
+
+router.post("/verify/email", async (req, res, next) => {
+  const user = {
+    email: req.body.email,
+    token: req.body.verification_token,
+  };
+  if (
+    user.token != "" &&
+    user.token != undefined &&
+    user.email != "" &&
+    user.email != undefined
+  ) {
+    const decoded_email_verification_token = await jwt.verify(
+      user.token,
+      settings.jwt_password
+    );
+    if (decoded_email_verification_token != undefined) {
+      const setUserEmailVerified = UsersModel.findOne(
+        {
+          email: user.email,
+        },
+        async function (err, result) {
+          if (err) {
+            return console.error(err);
+          }
+          if (result != undefined) {
+            if (result.email_verified == true) {
+              res.json({
+                code: 200,
+                message: "your email has already been verified",
+              });
+              return;
+            }
+            result.email_verified = true;
+            await result.save((err) => {
+              if (err) {
+                return console.error(err);
+              }
+            });
+          } else {
+            res.json({
+              code: 404,
+              message: "user not found",
+            });
+          }
+        }
+      );
+      res.json({
+        code: 200,
+        message: "email verified!",
+      });
+    } else {
+      res.json({
+        code: 401,
+        message: "token not valid",
+      });
+    }
+  } else {
+    res.json({
+      code: 400,
+      message: "fields incorrect",
+    });
   }
 });
 
