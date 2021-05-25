@@ -3,8 +3,11 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const app = express();
+const ejs = require("ejs");
 
 console.clear();
+
+app.set("view engine", "ejs");
 
 const settings = require("./settings");
 
