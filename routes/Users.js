@@ -268,7 +268,6 @@ router.post("/send/email/verification", (req, res, next) => {
               { email: user.email },
               findedUser.email_verification_password
             );
-            console.log(findedUser.email_verification_password);
           }
         }
         if (EmailVerifyToken != null && EmailVerifyToken != "") {
