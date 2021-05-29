@@ -16,12 +16,12 @@ function saveState(req, res) {
         : "";
     user.email = req.body.email;
     user.password = req.body.password;
-    // user.email_verification_password = await bcrypt.hashSync(
-    //   user.email +
-    //     Math.floor(Math.random() * 99999999999) +
-    //     settings.email_verification_password,
-    //   10
-    // );
+    user.email_verification_password = await bcrypt.hashSync(
+      user.email +
+        Math.floor(Math.random() * 99999999999) +
+        settings.email_verification_password,
+      10
+    );
     try {
       user.password = await bcrypt.hashSync(user.password, 10);
       user = await user.save();
@@ -355,14 +355,18 @@ router.post("/verify/email", async (req, res, next) => {
             if (decoded_email_verification_token != undefined) {
               if (result.email_verified == false) {
                 result.email_verified = true;
+                // Change ' Email Verification Password '
+                result.email_verification_password = await bcrypt.hashSync(
+                  user.email +
+                    Math.floor(Math.random() * 99999999999) +
+                    settings.email_verification_password,
+                  10
+                );
                 await result.save((err) => {
                   if (err) {
                     return console.error(err);
                   }
                 });
-                // TODO
-
-                // TODO
                 res.json({
                   code: 200,
                   message: "email verified!",
