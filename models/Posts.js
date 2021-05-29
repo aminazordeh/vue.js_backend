@@ -10,6 +10,14 @@ const PostsSchema = mongoose.Schema({
     type: String,
     required: true,
   },
+  post_content: {
+    type: String,
+    required: true,
+  },
+  post_author: {
+    type: String,
+    required: true,
+  },
   post_cover_img: {
     type: String,
     required: true,
@@ -32,7 +40,6 @@ const PostsSchema = mongoose.Schema({
   },
   post_publish_date: {
     type: Date,
-    default: new Date.now(),
   },
 });
 

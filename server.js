@@ -31,6 +31,9 @@ app.use("/", IndexRoutes);
 
 const UsersRoutes = require("./routes/Users");
 app.use("/users", UsersRoutes);
+
+const PostsRoutes = require("./routes/Posts");
+app.use("/posts", PostsRoutes);
 // End Routes
 
 app.listen(settings.listening_post, () => {

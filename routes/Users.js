@@ -16,6 +16,12 @@ function saveState(req, res) {
         : "";
     user.email = req.body.email;
     user.password = req.body.password;
+    // user.email_verification_password = await bcrypt.hashSync(
+    //   user.email +
+    //     Math.floor(Math.random() * 99999999999) +
+    //     settings.email_verification_password,
+    //   10
+    // );
     try {
       user.password = await bcrypt.hashSync(user.password, 10);
       user = await user.save();
@@ -66,7 +72,7 @@ router.post("/signup", (req, res, next) => {
             // Error
             res.json({
               code: 500,
-              message: error,
+              message: "an error occurred on the server",
             });
             console.error(error);
             next();
@@ -83,7 +89,10 @@ router.post("/signup", (req, res, next) => {
       }
     );
   } else {
-    res.send("fields incorrect");
+    res.json({
+      code: 400,
+      message: "fields incorrect",
+    });
     next();
   }
 });
@@ -92,7 +101,6 @@ router.post("/signin", (req, res, next) => {
   const user = {
     email: req.body.email,
     password: req.body.password /* recaptcha: req.body.recaptcha */,
-    /* REVIEW */
   };
   if (
     user.email != "" &&
@@ -195,7 +203,11 @@ router.post("/auth/token", (req, res, next) => {
                   return console.error(err);
                 }
                 if (data != undefined) {
-                  res.send(data);
+                  res.json({
+                    code: 200,
+                    message: "success",
+                    data: data,
+                  });
                   next();
                 } else {
                   res.json({
@@ -214,6 +226,7 @@ router.post("/auth/token", (req, res, next) => {
           message: "token not valid",
         });
         next();
+        return;
       }
     });
   } else {
@@ -222,6 +235,7 @@ router.post("/auth/token", (req, res, next) => {
       message: "fields incorrect",
     });
     next();
+    return;
   }
 });
 
@@ -240,38 +254,56 @@ router.post("/send/email/verification", (req, res, next) => {
       },
       async () => {
         // User Exist
-        const EmailVerifyToken = await jwt.sign(
-          { email: user.email },
-          settings.jwt_password,
-          {
-            expiresIn: "5h",
+        let EmailVerifyToken = null;
+        const findedUser = await UsersModel.findOne({
+          email: user.email,
+        });
+        if (findedUser != undefined && findedUser != null) {
+          if (
+            findedUser.email_verification_password != "" &&
+            findedUser.email_verification_password != undefined &&
+            findedUser.email_verification_password != null
+          ) {
+            EmailVerifyToken = await jwt.sign(
+              { email: user.email },
+              findedUser.email_verification_password
+            );
+            console.log(findedUser.email_verification_password);
           }
-        );
-
-        await mailService.sendMail(
-          {
-            to: user.email,
-            subject: "devsparkle.ir - تایید ایمیل",
-            body: `
+        }
+        if (EmailVerifyToken != null && EmailVerifyToken != "") {
+          await mailService.sendMail(
+            {
+              to: user.email,
+              subject: "devsparkle.ir - تایید ایمیل",
+              body: `
             <html>
-              <body>
-                <a href="http://127.0.0.1:/8080/verify/email/${EmailVerifyToken}"
+              <body style="width: 100%; text-align: right;">
+                <a href="${settings.front_address}/verify/email/${EmailVerifyToken}"
                   <span style="color: #4245f5; font-weight:bold;direction: rtl; font-size: 15px; text-decoration: none;">برای تایید ایمیل کلیک کنید</span>
                 </a>
                 <br>
-                <span style="margin-top: 10px; color: #777">حداکثر زمان برای فعال کردن لینک 5 ساعت است</span>
+                <span style="margin-top: 10px; color: #777">این لینک یک بار مصرف است و هیچگونه استفاده دیگری ندارد.</span>
               </body>
             </html>
             `,
-          },
-          () => {
-            res.json({
-              code: 200,
-              message: "email verification sended",
-            });
-            next();
-          }
-        );
+            },
+            () => {
+              res.json({
+                code: 200,
+                message: "email verification sended",
+              });
+              next();
+            }
+          );
+        } else {
+          res.json({
+            code: 500,
+            message: "an error occurred on the server",
+          });
+          next();
+          return;
+        }
       }
     );
   } else {
@@ -294,12 +326,11 @@ router.post("/verify/email", async (req, res, next) => {
     user.email != "" &&
     user.email != undefined
   ) {
-    const decoded_email_verification_token = await jwt.verify(
-      user.token,
-      settings.jwt_password
-    );
-    if (decoded_email_verification_token != undefined) {
-      const setUserEmailVerified = UsersModel.findOne(
+    try {
+      const findedUser = await UsersModel.findOne({
+        email: user.email,
+      });
+      const setUserEmailVerified = await UsersModel.findOne(
         {
           email: user.email,
         },
@@ -308,42 +339,75 @@ router.post("/verify/email", async (req, res, next) => {
             return console.error(err);
           }
           if (result != undefined) {
-            if (result.email_verified == true) {
+            let decoded_email_verification_token = undefined;
+            try {
+              decoded_email_verification_token = await jwt.verify(
+                user.token,
+                result.email_verification_password
+              );
+            } catch (error) {
               res.json({
-                code: 200,
-                message: "your email has already been verified",
+                code: 401,
+                message: "token not valid",
               });
+              next();
               return;
             }
-            result.email_verified = true;
-            await result.save((err) => {
-              if (err) {
-                return console.error(err);
+            if (decoded_email_verification_token != undefined) {
+              if (result.email_verified == false) {
+                result.email_verified = true;
+                await result.save((err) => {
+                  if (err) {
+                    return console.error(err);
+                  }
+                });
+                // TODO
+
+                // TODO
+                res.json({
+                  code: 200,
+                  message: "email verified!",
+                });
+                next();
+                return;
+              } else {
+                res.json({
+                  code: 200,
+                  message: "your email has already been verified",
+                });
+                next();
+                return;
               }
-            });
+            } else {
+              res.json({
+                code: 401,
+                message: "token not valid",
+              });
+              next();
+              return;
+            }
           } else {
             res.json({
               code: 404,
               message: "user not found",
             });
+            next();
+            return;
           }
         }
       );
-      res.json({
-        code: 200,
-        message: "email verified!",
-      });
-    } else {
-      res.json({
-        code: 401,
-        message: "token not valid",
-      });
+    } catch (error) {
+      console.error(error);
+      next();
+      return;
     }
   } else {
     res.json({
       code: 400,
       message: "fields incorrect",
     });
+    next();
+    return;
   }
 });
 
