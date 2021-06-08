@@ -39,7 +39,8 @@ const PostsSchema = mongoose.Schema({
     default: false,
   },
   post_publish_date: {
-    type: Date,
+    type: String,
+    required: true,
   },
 });
 

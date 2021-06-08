@@ -5,6 +5,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const settings = require("../settings");
 const mailService = require("../modules/mailService/mailService");
+const Recaptcha = require("../modules/Google-Recaptcha/GoogleRecaptchaValidate");
 const ejs = require("ejs");
 
 function saveState(req, res) {
@@ -100,69 +101,100 @@ router.post("/signup", (req, res, next) => {
 router.post("/signin", (req, res, next) => {
   const user = {
     email: req.body.email,
-    password: req.body.password /* recaptcha: req.body.recaptcha */,
+    password: req.body.password,
+    recaptcha: req.body.recaptcha,
   };
-  if (
-    user.email != "" &&
-    user.email != null &&
-    user.email != undefined &&
-    user.password != "" &&
-    user.password != null &&
-    user.password != undefined
-  ) {
-    checkUserExist(user.email).then(
-      () => {
-        // User Not Exist
-        res.json({
-          code: 404,
-          message: "user not exist",
-        });
-        next();
-      },
-      () => {
-        // User Exist
-        const findedUser = UsersModel.findOne(
-          {
-            email: user.email,
+  Recaptcha.GoogleRecaptchaVerification(
+    user.recaptcha,
+    req.connection.remoteAddress
+  ).then(
+    () => {
+      // Error
+      res.json({
+        code: 503,
+        message: "recaptcha not verified",
+      });
+      next();
+      return;
+    },
+    () => {
+      // Sucess
+      if (
+        user.email != "" &&
+        user.email != null &&
+        user.email != undefined &&
+        user.password != "" &&
+        user.password != null &&
+        user.password != undefined
+      ) {
+        checkUserExist(user.email).then(
+          () => {
+            // User Not Exist
+            res.json({
+              code: 404,
+              message: "user not exist",
+            });
+            next();
+            return;
           },
-          (err, data) => {
-            if (err) return console.error(err);
-            bcrypt.compare(
-              user.password,
-              data.password,
-              function (err, result) {
-                if (result) {
-                  jwt.sign(
-                    { data: data },
-                    settings.jwt_password,
-                    (err, token) => {
+          () => {
+            // User Exist
+            const findedUser = UsersModel.findOne(
+              {
+                email: user.email,
+              },
+              (err, data) => {
+                if (err) return console.error(err);
+                bcrypt.compare(
+                  user.password,
+                  data.password,
+                  function (err, result) {
+                    if (result) {
+                      jwt.sign(
+                        { data: data },
+                        settings.jwt_password,
+                        (err, token) => {
+                          const user_info = {
+                            full_name: data.full_name,
+                            email: data.email,
+                            password: data.password,
+                            access: data.access,
+                            bookmarks: data.bookmarks,
+                            email_verified: data.email_verified,
+                          };
+                          res.json({
+                            code: 200,
+                            user_info: user_info,
+                            token: token,
+                          });
+                          next();
+                          return;
+                        }
+                      );
+                    } else {
                       res.json({
-                        user_info: data,
-                        token: token,
+                        code: 401,
+                        message: "email or password incorrect",
                       });
                       next();
+                      return;
                     }
-                  );
-                } else {
-                  res.json({
-                    code: 401,
-                    message: "email or password incorrect",
-                  });
-                  next();
-                }
+                  }
+                );
               }
             );
           }
         );
+      } else {
+        res.json({
+          code: 400,
+          message: "fields incorrect",
+        });
+        next();
+        return;
       }
-    );
-  } else {
-    res.json({
-      code: 400,
-      message: "fields incorrect",
-    });
-    next();
-  }
+    }
+  );
 });
 
 router.post("/auth/token", (req, res, next) => {
@@ -209,12 +241,14 @@ router.post("/auth/token", (req, res, next) => {
                     data: data,
                   });
                   next();
+                  return;
                 } else {
                   res.json({
                     code: 401,
                     message: "token not valid",
                   });
                   next();
+                  return;
                 }
               }
             );

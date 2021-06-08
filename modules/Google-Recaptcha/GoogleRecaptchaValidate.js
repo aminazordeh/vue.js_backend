@@ -1,15 +1,14 @@
 const request = require("request");
-const configs = require("./config");
-configs.googleRecaptchaSecretKey;
+const settings = require("../../settings");
+
 async function GoogleRecaptchaVerification(
   recaptcha_response,
   connection_remote_address
 ) {
   return new Promise(async (not_verified, success) => {
-    const secretKey = "6LeCJL4ZAAAAAMcCovb3sPp9F4wJMDbpAtiYsmbr";
     const verificationUrl =
       "https://www.google.com/recaptcha/api/siteverify?secret=" +
-      secretKey +
+      settings.google_recaptcha_secretkey +
       "&response=" +
       recaptcha_response +
       "&remoteip=" +

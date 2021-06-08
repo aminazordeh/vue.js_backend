@@ -4,6 +4,13 @@ const PostsModel = require("../models/Posts");
 const UsersModel = require("../models/Users");
 const persianDate = require("persian-date");
 const settings = require("../settings");
+const jwt = require("jsonwebtoken");
+const bcryot = require("bcrypt");
+
+function slug_post_path(path) {
+  let post_path = String(path).trim().toLowerCase().replace(/ /g, "-");
+  return post_path;
+}
 
 function saveState(req, res, post_author) {
   return new Promise(async (_success, _error) => {
@@ -15,19 +22,67 @@ function saveState(req, res, post_author) {
     post.post_content = req.body.post_content;
     post.post_cover_img = req.body.post_cover_img;
     post.post_cover_text = req.body.post_cover_text;
-    post.post_publish_date = req.body.post_publish_date;
     post.post_publish_date = date.trim();
-    post.author = post_author;
+    post.post_author = post_author;
+
+    post.post_path = await slug_post_path(req.body.post_header);
+
     try {
       post = await post.save();
       _success();
     } catch (error) {
-      _error(error);
+      if (error) {
+        _error(error);
+      }
     }
   });
 }
 
-router.get("/", (req, res, next) => {});
+router.get("/", async (req, res, next) => {
+  const posts = await PostsModel.find({
+    post_publish: true,
+  });
+  res.json({
+    code: 200,
+    data: posts,
+  });
+});
+
+router.post("/get_post", async (req, res, next) => {
+  const post_path = req.body.post_path;
+  if (
+    String(post_path).trim() != "" &&
+    post_path != undefined &&
+    post_path != null
+  ) {
+    const post = await PostsModel.findOne({
+      post_path: String(post_path).trim(),
+      post_publish: true,
+    });
+    if (post != undefined && post != null && post.length != 0) {
+      res.json({
+        code: 200,
+        data: post,
+      });
+      next();
+      return;
+    } else {
+      res.json({
+        code: 404,
+        message: "post not found",
+      });
+      next();
+      return;
+    }
+  } else {
+    res.json({
+      code: 400,
+      message: "fields incorrect",
+    });
+    next();
+    return;
+  }
+});
 
 router.post("/new_post", async (req, res, next) => {
   const user = {
@@ -41,8 +96,6 @@ router.post("/new_post", async (req, res, next) => {
     post_cover_text: req.body.post_cover_text,
     post_content: req.body.post_content,
   };
-  console.log(user);
-  console.log(post);
   if (
     // Check Post Params
     post.post_header != "" &&
@@ -67,31 +120,85 @@ router.post("/new_post", async (req, res, next) => {
       if (decoded_user_token != undefined && decoded_user_token != null) {
         const findedUser = await UsersModel.findOne({
           email: user.email,
-          password: user.password,
         });
         if (findedUser != undefined && findedUser != null) {
-          if (findedUser.email_verified == true) {
-            if (findedUser.access == "admin" || findedUser.access == "writer") {
-              res.send("every thing ok!");
+          bcryot.compare(user.password, findedUser.password, (err, result) => {
+            if (result) {
+              if (findedUser.email_verified == true) {
+                if (
+                  findedUser.access == "admin" ||
+                  findedUser.access == "writer"
+                ) {
+                  const checkPostExistWithThisInfo = PostsModel.findOne(
+                    {
+                      post_path: slug_post_path(post.post_header),
+                    },
+                    (err, data) => {
+                      if (err) {
+                        return console.error(err);
+                      }
+                      if (data == undefined || data == null) {
+                        req.post = new PostsModel();
+                        saveState(req, res, findedUser.full_name).then(
+                          () => {
+                            res.json({
+                              code: 200,
+                              message: "post added to database",
+                            });
+                            next();
+                          },
+                          (err) => {
+                            console.error(err);
+                            res.json({
+                              code: 500,
+                              message: "an error occurred on the server",
+                            });
+                            next();
+                            return;
+                          }
+                        );
+                      } else {
+                        res.json({
+                          code: 409,
+                          message: "duplicate post",
+                        });
+                        next();
+                        return;
+                      }
+                    }
+                  );
+                } else {
+                  res.json({
+                    code: 503,
+                    message: "users not access to this point",
+                  });
+                  next();
+                  return;
+                }
+              } else {
+                res.json({
+                  code: 401,
+                  message: "your email not verified",
+                });
+                next();
+                return;
+              }
             } else {
               res.json({
-                code: 503,
-                message: "users not access to this point",
+                code: 401,
+                message: "email or password incorrect",
               });
+              next();
+              return;
             }
-          } else {
-            res.json({
-              code: 401,
-              message: "your email not verified",
-            });
-            next();
-          }
+          });
         } else {
           res.json({
             code: 401,
             message: "email or password incorrect",
           });
           next();
+          return;
         }
       }
     } catch (error) {
@@ -100,6 +207,7 @@ router.post("/new_post", async (req, res, next) => {
         message: "token not valid",
       });
       next();
+      return;
     }
   } else {
     res.json({
@@ -107,6 +215,7 @@ router.post("/new_post", async (req, res, next) => {
       message: "fields incorrect",
     });
     next();
+    return;
   }
 });
 
