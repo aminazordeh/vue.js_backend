@@ -276,6 +276,7 @@ router.post("/auth/token", (req, res, next) => {
 router.post("/send/email/verification", (req, res, next) => {
   const user = {
     email: req.body.email,
+    recaptcha: req.body.recaptcha,
   };
   if (user.email != "" && user.email != null && user.email != undefined) {
     checkUserExist(user.email).then(
@@ -293,6 +294,13 @@ router.post("/send/email/verification", (req, res, next) => {
           email: user.email,
         });
         if (findedUser != undefined && findedUser != null) {
+          if (findedUser.email_verified == true) {
+            res.json({
+              code: 409,
+              message: "your email has already been verified",
+            });
+            return next;
+          }
           if (
             findedUser.email_verification_password != "" &&
             findedUser.email_verification_password != undefined &&
@@ -409,7 +417,7 @@ router.post("/verify/email", async (req, res, next) => {
                 return;
               } else {
                 res.json({
-                  code: 200,
+                  code: 409,
                   message: "your email has already been verified",
                 });
                 next();
