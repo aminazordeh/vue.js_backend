@@ -7,6 +7,8 @@ const settings = require("../settings");
 const mailService = require("../modules/mailService/mailService");
 const Recaptcha = require("../modules/Google-Recaptcha/GoogleRecaptchaValidate");
 const ejs = require("ejs");
+const EmailDeepValidator = require("email-deep-validator");
+const emailValidator = new EmailDeepValidator();
 
 function saveState(req, res) {
   return new Promise(async (_success, _error) => {
@@ -44,58 +46,93 @@ function checkUserExist(email) {
   });
 }
 
-router.post("/signup", (req, res, next) => {
+router.post("/signup", async (req, res, next) => {
   const user = {
     full_name: req.body.full_name,
     email: req.body.email,
     password: req.body.password,
+    recaptcha: req.body.recaptcha,
   };
-  if (
-    user.email != "" &&
-    user.email != undefined &&
-    user.password != "" &&
-    user.password != null
-  ) {
-    checkUserExist(user.email).then(
-      () => {
-        // User NotExist
-        req.user = new UsersModel();
-        saveState(req, res).then(
-          () => {
-            // 200
-            res.json({
-              code: 200,
-              message: "user successfully added",
-            });
-            next();
-          },
-          (error) => {
-            // Error
-            res.json({
-              code: 500,
-              message: "an error occurred on the server",
-            });
-            console.error(error);
-            next();
-          }
-        );
-      },
-      () => {
-        // User Exist
+
+  Recaptcha.GoogleRecaptchaVerification(
+    user.recaptcha,
+    req.connection.remoteAddress
+  ).then(
+    () => {
+      // Error
+      res.json({
+        code: 503,
+        message: "recaptcha not verified",
+      });
+      next();
+      return;
+    },
+    async () => {
+      // Success
+      if (
+        user.email != "" &&
+        user.email != undefined &&
+        user.password != "" &&
+        user.password != null
+      ) {
+        const { validDomain } = await emailValidator.verify(user.email);
+
+        if (
+          (validDomain == true &&
+            validDomain != null &&
+            validDomain != undefined &&
+            String(user.email).includes("@gmail.com") == true) ||
+          String(user.email).includes("@yahoo.com") == true
+        ) {
+          checkUserExist(user.email).then(
+            () => {
+              // User NotExist
+              req.user = new UsersModel();
+              saveState(req, res).then(
+                () => {
+                  // 200
+                  res.json({
+                    code: 200,
+                    message: "user successfully added",
+                  });
+                  next();
+                },
+                (error) => {
+                  // Error
+                  res.json({
+                    code: 500,
+                    message: "an error occurred on the server",
+                  });
+                  console.error(error);
+                  return next();
+                }
+              );
+            },
+            () => {
+              // User Exist
+              res.json({
+                code: 409,
+                message: "an user exist with this email",
+              });
+              return next();
+            }
+          );
+        } else {
+          res.json({
+            code: 409,
+            message: "email not valid",
+          });
+          return next();
+        }
+      } else {
         res.json({
-          code: 409,
-          message: "an user exist with this email",
+          code: 400,
+          message: "fields incorrect",
         });
         next();
       }
-    );
-  } else {
-    res.json({
-      code: 400,
-      message: "fields incorrect",
-    });
-    next();
-  }
+    }
+  );
 });
 
 router.post("/signin", (req, res, next) => {
@@ -276,7 +313,6 @@ router.post("/auth/token", (req, res, next) => {
 router.post("/send/email/verification", (req, res, next) => {
   const user = {
     email: req.body.email,
-    recaptcha: req.body.recaptcha,
   };
   if (user.email != "" && user.email != null && user.email != undefined) {
     checkUserExist(user.email).then(
@@ -313,14 +349,17 @@ router.post("/send/email/verification", (req, res, next) => {
           }
         }
         if (EmailVerifyToken != null && EmailVerifyToken != "") {
-          await mailService.sendMail(
-            {
-              to: user.email,
-              subject: "devsparkle.ir - تایید ایمیل",
-              body: `
+          try {
+            await mailService.sendMail(
+              {
+                to: user.email,
+                subject: "devsparkle.ir - تایید ایمیل",
+                // TODO
+                // NOTE -> Change Email Template to new Version
+                body: `
             <html>
               <body style="width: 100%; text-align: right;">
-                <a href="${settings.front_address}/verify/email/${EmailVerifyToken}"
+                <a href="${settings.front_address}/verify_email/${findedUser.email}/${EmailVerifyToken}"
                   <span style="color: #4245f5; font-weight:bold;direction: rtl; font-size: 15px; text-decoration: none;">برای تایید ایمیل کلیک کنید</span>
                 </a>
                 <br>
@@ -328,15 +367,23 @@ router.post("/send/email/verification", (req, res, next) => {
               </body>
             </html>
             `,
-            },
-            () => {
-              res.json({
-                code: 200,
-                message: "email verification sended",
-              });
-              next();
-            }
-          );
+              },
+              () => {
+                res.json({
+                  code: 200,
+                  message: "email verification sended",
+                });
+                next();
+              }
+            );
+          } catch (error) {
+            res.json({
+              code: 500,
+              message: "an error occurred on the server",
+            });
+            next();
+            return;
+          }
         } else {
           res.json({
             code: 500,
