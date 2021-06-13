@@ -176,7 +176,7 @@ router.post("/signin", (req, res, next) => {
           },
           () => {
             // User Exist
-            const findedUser = UsersModel.findOne(
+            UsersModel.findOne(
               {
                 email: user.email,
               },
@@ -187,34 +187,44 @@ router.post("/signin", (req, res, next) => {
                   data.password,
                   function (err, result) {
                     if (result) {
-                      jwt.sign(
-                        { data: data },
-                        settings.jwt_password,
-                        (err, token) => {
-                          const user_info = {
-                            full_name: data.full_name,
-                            email: data.email,
-                            password: data.password,
-                            access: data.access,
-                            bookmarks: data.bookmarks,
-                            email_verified: data.email_verified,
-                          };
-                          res.json({
-                            code: 200,
-                            user_info: user_info,
-                            token: token,
-                          });
-                          next();
-                          return;
-                        }
-                      );
+                      if (
+                        data.email_verified != undefined &&
+                        data.email_verified == true
+                      ) {
+                        jwt.sign(
+                          { data: data },
+                          settings.jwt_password,
+                          (err, token) => {
+                            const user_info = {
+                              full_name: data.full_name,
+                              email: data.email,
+                              password: data.password,
+                              access: data.access,
+                              bookmarks: data.bookmarks,
+                              email_verified: data.email_verified,
+                            };
+                            res.json({
+                              code: 200,
+                              user_info: user_info,
+                              token: token,
+                            });
+                            next();
+                            return;
+                          }
+                        );
+                      } else {
+                        res.json({
+                          code: 503,
+                          message: "email not verified",
+                        });
+                        return next();
+                      }
                     } else {
                       res.json({
                         code: 401,
                         message: "email or password incorrect",
                       });
-                      next();
-                      return;
+                      return next();
                     }
                   }
                 );
@@ -227,8 +237,7 @@ router.post("/signin", (req, res, next) => {
           code: 400,
           message: "fields incorrect",
         });
-        next();
-        return;
+        return next();
       }
     }
   );
@@ -359,7 +368,7 @@ router.post("/send/email/verification", (req, res, next) => {
                 body: `
             <html>
               <body style="width: 100%; text-align: right;">
-                <a href="${settings.front_address}/verify_email/${findedUser.email}/${EmailVerifyToken}"
+                <a href="${settings.front_address}/verify_email/${EmailVerifyToken}?email=${user.email}"
                   <span style="color: #4245f5; font-weight:bold;direction: rtl; font-size: 15px; text-decoration: none;">برای تایید ایمیل کلیک کنید</span>
                 </a>
                 <br>
