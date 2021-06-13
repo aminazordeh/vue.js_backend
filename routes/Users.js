@@ -284,7 +284,7 @@ router.post("/auth/token", (req, res, next) => {
                   res.json({
                     code: 200,
                     message: "success",
-                    data: data,
+                    user_info: data,
                   });
                   next();
                   return;
@@ -359,30 +359,38 @@ router.post("/send/email/verification", (req, res, next) => {
         }
         if (EmailVerifyToken != null && EmailVerifyToken != "") {
           try {
-            await mailService.sendMail(
+            ejs.renderFile(
+              process.cwd() + "/modules/mailService/template.ejs",
               {
-                to: user.email,
-                subject: "devsparkle.ir - تایید ایمیل",
-                // TODO
-                // NOTE -> Change Email Template to new Version
-                body: `
-            <html>
-              <body style="width: 100%; text-align: right;">
-                <a href="${settings.front_address}/verify_email/${EmailVerifyToken}?email=${user.email}"
-                  <span style="color: #4245f5; font-weight:bold;direction: rtl; font-size: 15px; text-decoration: none;">برای تایید ایمیل کلیک کنید</span>
-                </a>
-                <br>
-                <span style="margin-top: 10px; color: #777">این لینک یک بار مصرف است و هیچگونه استفاده دیگری ندارد.</span>
-              </body>
-            </html>
-            `,
+                email: "mr.tahadostifam@gmail.com",
+                token: EmailVerifyToken,
+                front_end_address: "http://127.0.0.1:8080",
               },
-              () => {
-                res.json({
-                  code: 200,
-                  message: "email verification sended",
-                });
-                next();
+              {},
+              async (err, str) => {
+                if (err) {
+                  res.json({
+                    code: 500,
+                    message: "an error occurred on the server",
+                  });
+                  console.error(err);
+                  return next();
+                }
+
+                await mailService.sendMail(
+                  {
+                    to: user.email,
+                    subject: "devsparkle.ir - تایید ایمیل",
+                    body: str,
+                  },
+                  () => {
+                    res.json({
+                      code: 200,
+                      message: "email verification sended",
+                    });
+                    next();
+                  }
+                );
               }
             );
           } catch (error) {
