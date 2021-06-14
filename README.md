@@ -1,5 +1,5 @@
 # devsparkle Backend [Node.js, MongoDB]
-1- First we Create a File in project root directory 
+1- First we Create 'settings.js' File in project root directory 
 ```js
 const settings = {
   listening_post: 3000,
