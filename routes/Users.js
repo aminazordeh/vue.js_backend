@@ -9,6 +9,17 @@ const Recaptcha = require("../modules/Google-Recaptcha/GoogleRecaptchaValidate")
 const ejs = require("ejs");
 const EmailDeepValidator = require("email-deep-validator");
 const emailValidator = new EmailDeepValidator();
+const AuthToken = require("../modules/AuthToken/AuthToken");
+const { userLogin, checkUserExist } = require("../modules/userLogin/userLogin");
+
+function generate_email_verification_password(email) {
+  return bcrypt.hashSync(
+    email +
+      Math.floor(Math.random() * 99999999999) +
+      settings.email_verification_password,
+    10
+  );
+}
 
 function saveState(req, res) {
   return new Promise(async (_success, _error) => {
@@ -19,29 +30,14 @@ function saveState(req, res) {
         : "";
     user.email = req.body.email;
     user.password = req.body.password;
-    user.email_verification_password = await bcrypt.hashSync(
-      user.email +
-        Math.floor(Math.random() * 99999999999) +
-        settings.email_verification_password,
-      10
-    );
+    user.email_verification_password =
+      await generate_email_verification_password();
     try {
       user.password = await bcrypt.hashSync(user.password, 10);
       user = await user.save();
       _success();
     } catch (error) {
       _error(error);
-    }
-  });
-}
-
-function checkUserExist(email) {
-  return new Promise(async (notExist, Exist) => {
-    const findedUser = await UsersModel.findOne({ email: email });
-    if (findedUser == null) {
-      notExist();
-    } else {
-      Exist();
     }
   });
 }
@@ -53,86 +49,135 @@ router.post("/signup", async (req, res, next) => {
     password: req.body.password,
     recaptcha: req.body.recaptcha,
   };
-
   Recaptcha.GoogleRecaptchaVerification(
     user.recaptcha,
-    req.connection.remoteAddress
-  ).then(
-    () => {
-      // Error
-      res.json({
-        code: 503,
-        message: "recaptcha not verified",
-      });
-      next();
-      return;
-    },
-    async () => {
-      // Success
+    req.connection.remoteAddress,
+    req,
+    res,
+    next
+  ).then(async () => {
+    // Success
+    if (
+      user.email != "" &&
+      user.email != undefined &&
+      user.password != "" &&
+      user.password != null
+    ) {
       if (
-        user.email != "" &&
-        user.email != undefined &&
-        user.password != "" &&
-        user.password != null
+        String(user.email).includes("@gmail.com") == true ||
+        String(user.email).includes("@yahoo.com") == true
       ) {
-        const { validDomain } = await emailValidator.verify(user.email);
+        checkUserExist(user.email).then(
+          () => {
+            // User NotExist
+            req.user = new UsersModel();
+            saveState(req, res).then(
+              () => {
+                // 200
+                userLogin(user.email, undefined, req, res, next).then(
+                  async (data) => {
+                    if (data != undefined && data != null) {
+                      if (
+                        data.email_verification_password != "" &&
+                        data.email_verification_password != undefined &&
+                        data.email_verification_password != null
+                      ) {
+                        EmailVerifyToken = await jwt.sign(
+                          { email: user.email },
+                          data.email_verification_password
+                        );
+                      }
+                    }
+                    if (EmailVerifyToken != null && EmailVerifyToken != "") {
+                      try {
+                        ejs.renderFile(
+                          process.cwd() + "/modules/mailService/template.ejs",
+                          {
+                            email: user.email,
+                            token: EmailVerifyToken,
+                            front_end_address: settings.front_address,
+                          },
+                          {},
+                          async (err, str) => {
+                            if (err) {
+                              res.json({
+                                code: 500,
+                                message: "an error occurred on the server",
+                              });
+                              console.error(err);
+                              return next();
+                            }
 
-        if (
-          (validDomain == true &&
-            validDomain != null &&
-            validDomain != undefined &&
-            String(user.email).includes("@gmail.com") == true) ||
-          String(user.email).includes("@yahoo.com") == true
-        ) {
-          checkUserExist(user.email).then(
-            () => {
-              // User NotExist
-              req.user = new UsersModel();
-              saveState(req, res).then(
-                () => {
-                  // 200
-                  res.json({
-                    code: 200,
-                    message: "user successfully added",
-                  });
-                  next();
-                },
-                (error) => {
-                  // Error
-                  res.json({
-                    code: 500,
-                    message: "an error occurred on the server",
-                  });
-                  console.error(error);
-                  return next();
-                }
-              );
-            },
-            () => {
-              // User Exist
-              res.json({
-                code: 409,
-                message: "an user exist with this email",
-              });
-              return next();
-            }
-          );
-        } else {
-          res.json({
-            code: 409,
-            message: "email not valid",
-          });
-          return next();
-        }
+                            await mailService.sendMail(
+                              {
+                                to: user.email,
+                                subject: "devsparkle.ir - تایید ایمیل",
+                                body: str,
+                              },
+                              () => {
+                                res.json({
+                                  code: 200,
+                                  message: "user successfully added",
+                                });
+                                next();
+                              }
+                            );
+                          }
+                        );
+                      } catch (error) {
+                        res.json({
+                          code: 500,
+                          message: "an error occurred on the server",
+                        });
+                        next();
+                        return;
+                      }
+                    } else {
+                      res.json({
+                        code: 500,
+                        message: "an error occurred on the server",
+                      });
+                      next();
+                      return;
+                    }
+                  }
+                );
+              },
+              (error) => {
+                // Error
+                res.json({
+                  code: 500,
+                  message: "an error occurred on the server",
+                });
+                console.error(error);
+                return next();
+              }
+            );
+          },
+          () => {
+            // User Exist
+            res.json({
+              code: 409,
+              message: "an user exist with this email",
+            });
+            return next();
+          }
+        );
       } else {
         res.json({
-          code: 400,
-          message: "fields incorrect",
+          code: 409,
+          message: "email not valid",
         });
-        next();
+        return next();
       }
+    } else {
+      res.json({
+        code: 400,
+        message: "fields incorrect",
+      });
+      next();
     }
-  );
+  });
 });
 
 router.post("/signin", (req, res, next) => {
@@ -143,104 +188,47 @@ router.post("/signin", (req, res, next) => {
   };
   Recaptcha.GoogleRecaptchaVerification(
     user.recaptcha,
-    req.connection.remoteAddress
-  ).then(
-    () => {
-      // Error
-      res.json({
-        code: 503,
-        message: "recaptcha not verified",
-      });
-      next();
-      return;
-    },
-    () => {
-      // Sucess
-      if (
-        user.email != "" &&
-        user.email != null &&
-        user.email != undefined &&
-        user.password != "" &&
-        user.password != null &&
-        user.password != undefined
-      ) {
-        checkUserExist(user.email).then(
-          () => {
-            // User Not Exist
-            res.json({
-              code: 404,
-              message: "user not exist",
-            });
-            next();
-            return;
-          },
-          () => {
-            // User Exist
-            UsersModel.findOne(
-              {
-                email: user.email,
-              },
-              (err, data) => {
-                if (err) return console.error(err);
-                bcrypt.compare(
-                  user.password,
-                  data.password,
-                  function (err, result) {
-                    if (result) {
-                      if (
-                        data.email_verified != undefined &&
-                        data.email_verified == true
-                      ) {
-                        jwt.sign(
-                          { data: data },
-                          settings.jwt_password,
-                          (err, token) => {
-                            const user_info = {
-                              full_name: data.full_name,
-                              email: data.email,
-                              password: data.password,
-                              access: data.access,
-                              bookmarks: data.bookmarks,
-                              email_verified: data.email_verified,
-                            };
-                            res.json({
-                              code: 200,
-                              user_info: user_info,
-                              token: token,
-                            });
-                            next();
-                            return;
-                          }
-                        );
-                      } else {
-                        res.json({
-                          code: 503,
-                          message: "email not verified",
-                        });
-                        return next();
-                      }
-                    } else {
-                      res.json({
-                        code: 401,
-                        message: "email or password incorrect",
-                      });
-                      return next();
-                    }
-                  }
-                );
-              }
-            );
-          }
-        );
-      } else {
-        res.json({
-          code: 400,
-          message: "fields incorrect",
+    req.connection.remoteAddress,
+    req,
+    res,
+    next
+  ).then(() => {
+    // Sucess
+    if (
+      user.email != "" &&
+      user.email != null &&
+      user.email != undefined &&
+      user.password != "" &&
+      user.password != null &&
+      user.password != undefined
+    ) {
+      userLogin(user.email, user.password, req, res, next).then((data) => {
+        jwt.sign({ data: data }, settings.jwt_password, (err, token) => {
+          const user_info = {
+            full_name: data.full_name,
+            email: data.email,
+            password: data.password,
+            access: data.access,
+            bookmarks: data.bookmarks,
+            email_verified: data.email_verified,
+          };
+          res.json({
+            code: 200,
+            user_info: user_info,
+            token: token,
+          });
+          next();
+          return;
         });
-        return next();
-      }
+      });
+    } else {
+      res.json({
+        code: 400,
+        message: "fields incorrect",
+      });
+      return next();
     }
-  );
+  });
 });
 
 router.post("/auth/token", (req, res, next) => {
@@ -260,54 +248,16 @@ router.post("/auth/token", (req, res, next) => {
     params.token != null &&
     params.token != undefined
   ) {
-    jwt.verify(params.token, settings.jwt_password, (err, decoded) => {
-      if (err) return res.json({ code: 401, message: "token not valid" });
-      if (decoded != null && decoded != "undefined") {
-        try {
-          if (
-            decoded.data.email != undefined &&
-            decoded.data.email != null &&
-            decoded.data.password != undefined &&
-            decoded.data.password != null
-          ) {
-            const findedUser = UsersModel.findOne(
-              {
-                email: decoded.data.email,
-                password: decoded.data.password,
-              },
-              (err, data) => {
-                if (err) {
-                  next();
-                  return console.error(err);
-                }
-                if (data != undefined) {
-                  res.json({
-                    code: 200,
-                    message: "success",
-                    user_info: data,
-                  });
-                  next();
-                  return;
-                } else {
-                  res.json({
-                    code: 401,
-                    message: "token not valid",
-                  });
-                  next();
-                  return;
-                }
-              }
-            );
-          }
-        } catch (error) {}
-      } else {
+    AuthToken(params.token, req, res, next).then(() => {
+      userLogin(params.email, params.password, req, res, next).then((data) => {
         res.json({
-          code: 401,
-          message: "token not valid",
+          code: 200,
+          message: "success",
+          user_info: data,
         });
         next();
         return;
-      }
+      });
     });
   } else {
     res.json({
@@ -322,86 +272,66 @@ router.post("/auth/token", (req, res, next) => {
 router.post("/send/email/verification", (req, res, next) => {
   const user = {
     email: req.body.email,
+    recaptcha: req.body.recaptcha,
   };
   if (user.email != "" && user.email != null && user.email != undefined) {
-    checkUserExist(user.email).then(
-      () => {
-        // User Not Exist
-        res.json({
-          code: 404,
-          message: "user not exist",
-        });
-      },
-      async () => {
-        // User Exist
-        let EmailVerifyToken = null;
-        const findedUser = await UsersModel.findOne({
-          email: user.email,
-        });
-        if (findedUser != undefined && findedUser != null) {
-          if (findedUser.email_verified == true) {
-            res.json({
-              code: 409,
-              message: "your email has already been verified",
-            });
-            return next;
-          }
-          if (
-            findedUser.email_verification_password != "" &&
-            findedUser.email_verification_password != undefined &&
-            findedUser.email_verification_password != null
-          ) {
-            EmailVerifyToken = await jwt.sign(
-              { email: user.email },
-              findedUser.email_verification_password
-            );
-          }
+    userLogin(user.email, undefined, req, res, next).then(async (data) => {
+      if (data != undefined && data != null) {
+        if (data.email_verified == true) {
+          res.json({
+            code: 409,
+            message: "your email has already been verified",
+          });
+          return next;
         }
-        if (EmailVerifyToken != null && EmailVerifyToken != "") {
-          try {
-            ejs.renderFile(
-              process.cwd() + "/modules/mailService/template.ejs",
-              {
-                email: "mr.tahadostifam@gmail.com",
-                token: EmailVerifyToken,
-                front_end_address: "http://127.0.0.1:8080",
-              },
-              {},
-              async (err, str) => {
-                if (err) {
-                  res.json({
-                    code: 500,
-                    message: "an error occurred on the server",
-                  });
-                  console.error(err);
-                  return next();
-                }
-
-                await mailService.sendMail(
-                  {
-                    to: user.email,
-                    subject: "devsparkle.ir - تایید ایمیل",
-                    body: str,
-                  },
-                  () => {
-                    res.json({
-                      code: 200,
-                      message: "email verification sended",
-                    });
-                    next();
-                  }
-                );
+        if (
+          data.email_verification_password != "" &&
+          data.email_verification_password != undefined &&
+          data.email_verification_password != null
+        ) {
+          EmailVerifyToken = await jwt.sign(
+            { email: user.email },
+            data.email_verification_password
+          );
+        }
+      }
+      if (EmailVerifyToken != null && EmailVerifyToken != "") {
+        try {
+          ejs.renderFile(
+            process.cwd() + "/modules/mailService/template.ejs",
+            {
+              email: user.email,
+              token: EmailVerifyToken,
+              front_end_address: settings.front_address,
+            },
+            {},
+            async (err, str) => {
+              if (err) {
+                res.json({
+                  code: 500,
+                  message: "an error occurred on the server",
+                });
+                console.error(err);
+                return next();
               }
-            );
-          } catch (error) {
-            res.json({
-              code: 500,
-              message: "an error occurred on the server",
-            });
-            next();
-            return;
-          }
-        } else {
+
+              await mailService.sendMail(
+                {
+                  to: user.email,
+                  subject: "devsparkle.ir - تایید ایمیل",
+                  body: str,
+                },
+                () => {
+                  res.json({
+                    code: 200,
+                    message: "email verification sended",
+                  });
+                  next();
+                }
+              );
+            }
+          );
+        } catch (error) {
           res.json({
             code: 500,
             message: "an error occurred on the server",
@@ -409,8 +339,15 @@ router.post("/send/email/verification", (req, res, next) => {
           next();
           return;
         }
+      } else {
+        res.json({
+          code: 500,
+          message: "an error occurred on the server",
+        });
+        next();
+        return;
       }
-    );
+    });
   } else {
     res.json({
       code: 400,
@@ -423,6 +360,7 @@ router.post("/send/email/verification", (req, res, next) => {
 router.post("/verify/email", async (req, res, next) => {
   const user = {
     email: req.body.email,
+    password: req.body.password,
     token: req.body.verification_token,
   };
   if (
@@ -431,85 +369,38 @@ router.post("/verify/email", async (req, res, next) => {
     user.email != "" &&
     user.email != undefined
   ) {
-    try {
-      const findedUser = await UsersModel.findOne({
-        email: user.email,
-      });
-      const setUserEmailVerified = await UsersModel.findOne(
-        {
-          email: user.email,
-        },
-        async function (err, result) {
+    userLogin(user.email, undefined, req, res, next).then(async (data) => {
+      if (data.email_verified == false) {
+        data.email_verified = true;
+        // Change ' Email Verification Password '
+        data.email_verification_password = await bcrypt.hashSync(
+          user.email +
+            Math.floor(Math.random() * 99999999999) +
+            settings.email_verification_password,
+          10
+        );
+        await data.save((err) => {
           if (err) {
             return console.error(err);
           }
-          if (result != undefined) {
-            let decoded_email_verification_token = undefined;
-            try {
-              decoded_email_verification_token = await jwt.verify(
-                user.token,
-                result.email_verification_password
-              );
-            } catch (error) {
-              res.json({
-                code: 401,
-                message: "token not valid",
-              });
-              next();
-              return;
-            }
-            if (decoded_email_verification_token != undefined) {
-              if (result.email_verified == false) {
-                result.email_verified = true;
-                // Change ' Email Verification Password '
-                result.email_verification_password = await bcrypt.hashSync(
-                  user.email +
-                    Math.floor(Math.random() * 99999999999) +
-                    settings.email_verification_password,
-                  10
-                );
-                await result.save((err) => {
-                  if (err) {
-                    return console.error(err);
-                  }
-                });
-                res.json({
-                  code: 200,
-                  message: "email verified!",
-                });
-                next();
-                return;
-              } else {
-                res.json({
-                  code: 409,
-                  message: "your email has already been verified",
-                });
-                next();
-                return;
-              }
-            } else {
-              res.json({
-                code: 401,
-                message: "token not valid",
-              });
-              next();
-              return;
-            }
-          } else {
-            res.json({
-              code: 404,
-              message: "user not found",
-            });
-            next();
-            return;
-          }
-        }
-      );
-    } catch (error) {
-      console.error(error);
-      next();
-      return;
-    }
+        });
+        res.json({
+          code: 200,
+          message: "email verified!",
+        });
+        next();
+        return;
+      } else {
+        res.json({
+          code: 409,
+          message: "your email has already been verified",
+        });
+        next();
+        return;
+      }
+    });
+    return;
+    AuthToken(user.token, req, res, next).then(() => {});
   } else {
     res.json({
       code: 400,

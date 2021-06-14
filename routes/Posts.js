@@ -6,6 +6,8 @@ const persianDate = require("persian-date");
 const settings = require("../settings");
 const jwt = require("jsonwebtoken");
 const bcryot = require("bcrypt");
+const AuthToken = require("../modules/AuthToken/AuthToken");
+const { userLogin, checkUserExist } = require("../modules/userLogin/userLogin");
 
 function slug_post_path(path) {
   let post_path = String(path).trim().toLowerCase().replace(/ /g, "-");
@@ -38,6 +40,56 @@ function saveState(req, res, post_author) {
   });
 }
 
+function getPost(post_path, getforuser, email) {
+  return new Promise(async (exist, not_exist) => {
+    const findedPost = await PostsModel.findOne({
+      post_path: String(post_path).trim(),
+      post_publish: true,
+    });
+
+    if (
+      findedPost != undefined &&
+      findedPost != null &&
+      findedPost.length != 0
+    ) {
+      const post = {
+        post_header: findedPost.post_header,
+        post_cover_img: findedPost.post_cover_img,
+        post_cover_text: findedPost.post_cover_text,
+        post_publish_date: findedPost.post_publish_date,
+        post_author: findedPost.post_author,
+        post_path: findedPost.post_path,
+        post_likes: "",
+        you_are_liked_this_post: "undefined",
+        post_comments: findedPost.post_comments,
+      };
+      if (
+        getforuser == false ||
+        getforuser == undefined ||
+        getforuser == null
+      ) {
+        post.post_likes = findedPost.post_likes;
+      } else {
+        if (email != undefined && email != null && email != "") {
+          const likes = findedPost.post_likes;
+          if (
+            likes.find(({ email }) => email === email) == undefined ||
+            likes.find(({ email }) => email === email) == true
+          ) {
+            post.you_are_liked_this_post = false;
+          } else {
+            post.you_are_liked_this_post = true;
+          }
+        }
+        post.post_likes = findedPost.post_likes.length;
+      }
+      exist(post);
+    } else {
+      not_exist();
+    }
+  });
+}
+
 router.get("/", async (req, res, next) => {
   const posts = await PostsModel.find({
     post_publish: true,
@@ -50,30 +102,32 @@ router.get("/", async (req, res, next) => {
 
 router.post("/get_post", async (req, res, next) => {
   const post_path = req.body.post_path;
+  const email = req.body.email;
   if (
     String(post_path).trim() != "" &&
     post_path != undefined &&
     post_path != null
   ) {
-    const post = await PostsModel.findOne({
-      post_path: String(post_path).trim(),
-      post_publish: true,
-    });
-    if (post != undefined && post != null && post.length != 0) {
-      res.json({
-        code: 200,
-        data: post,
-      });
-      next();
-      return;
-    } else {
-      res.json({
-        code: 404,
-        message: "post not found",
-      });
-      next();
-      return;
-    }
+    getPost(
+      post_path,
+      true,
+      email == undefined || email == "" ? undefined : email
+    ).then(
+      (post) => {
+        res.json({
+          code: 200,
+          data: post,
+        });
+        return next();
+      },
+      () => {
+        res.json({
+          code: 404,
+          message: "post not found",
+        });
+        return next();
+      }
+    );
   } else {
     res.json({
       code: 400,
@@ -112,111 +166,158 @@ router.post("/new_post", async (req, res, next) => {
     user.password != "" &&
     user.password != undefined
   ) {
-    try {
-      const decoded_user_token = await jwt.verify(
-        user.user_token,
-        settings.jwt_password
-      );
-      if (decoded_user_token != undefined && decoded_user_token != null) {
-        const findedUser = await UsersModel.findOne({
-          email: user.email,
-        });
-        if (findedUser != undefined && findedUser != null) {
-          bcryot.compare(user.password, findedUser.password, (err, result) => {
-            if (result) {
-              if (findedUser.email_verified == true) {
-                if (
-                  findedUser.access == "admin" ||
-                  findedUser.access == "writer"
-                ) {
-                  const checkPostExistWithThisInfo = PostsModel.findOne(
-                    {
-                      post_path: slug_post_path(post.post_header),
-                    },
-                    (err, data) => {
-                      if (err) {
-                        return console.error(err);
-                      }
-                      if (data == undefined || data == null) {
-                        req.post = new PostsModel();
-                        saveState(req, res, findedUser.full_name).then(
-                          () => {
-                            res.json({
-                              code: 200,
-                              message: "post added to database",
-                            });
-                            next();
-                          },
-                          (err) => {
-                            console.error(err);
-                            res.json({
-                              code: 500,
-                              message: "an error occurred on the server",
-                            });
-                            next();
-                            return;
-                          }
-                        );
-                      } else {
-                        res.json({
-                          code: 409,
-                          message: "duplicate post",
-                        });
-                        next();
-                        return;
-                      }
-                    }
-                  );
-                } else {
-                  res.json({
-                    code: 503,
-                    message: "users not access to this point",
-                  });
-                  next();
-                  return;
-                }
+    AuthToken(user.user_token, req, res, next).then(async () => {
+      // Valid
+      userLogin(user.email, user.password, req, res, next).then((data) => {
+        if (data.access == "admin" || data.access == "writer") {
+          const checkPostExistWithThisInfo = PostsModel.findOne(
+            {
+              post_path: slug_post_path(post.post_header),
+            },
+            (err, result) => {
+              if (err) {
+                return console.error(err);
+              }
+              if (result == undefined || result == null) {
+                req.post = new PostsModel();
+                saveState(req, res, data.full_name).then(
+                  () => {
+                    res.json({
+                      code: 200,
+                      message: "post added to database",
+                    });
+                    return next();
+                  },
+                  (err) => {
+                    console.error(err);
+                    res.json({
+                      code: 500,
+                      message: "an error occurred on the server",
+                    });
+                    return next();
+                  }
+                );
               } else {
                 res.json({
-                  code: 401,
-                  message: "your email not verified",
+                  code: 409,
+                  message: "duplicate post",
                 });
-                next();
-                return;
+                return next();
               }
-            } else {
-              res.json({
-                code: 401,
-                message: "email or password incorrect",
-              });
-              next();
-              return;
             }
-          });
+          );
         } else {
           res.json({
-            code: 401,
-            message: "email or password incorrect",
+            code: 503,
+            message: "users not access to this point",
           });
-          next();
-          return;
+          return next();
         }
-      }
-    } catch (error) {
-      res.json({
-        code: 401,
-        message: "token not valid",
       });
-      next();
-      return;
-    }
+    });
   } else {
     res.json({
       code: 400,
       message: "fields incorrect",
     });
-    next();
-    return;
+    return next();
   }
+});
+
+router.post("/like_post", (req, res, next) => {
+  const params = {
+    email: req.body.email,
+    password: req.body.password,
+    token: req.body.token,
+    post_path: req.body.post_path,
+  };
+  if (
+    params.email != "" &&
+    params.email != null &&
+    params.email != undefined &&
+    params.password != "" &&
+    params.password != null &&
+    params.password != undefined &&
+    params.token != "" &&
+    params.token != null &&
+    params.token != undefined &&
+    params.post_path != "" &&
+    params.post_path != null &&
+    params.post_path != undefined
+  ) {
+    AuthToken(params.token, req, res, next).then(() => {
+      userLogin(params.email, params.password, req, res, next).then((data) => {
+        getPost(params.post_path).then((post) => {
+          const likes = post.post_likes;
+          if (
+            likes.find(({ email }) => email === data.email) == undefined ||
+            likes.find(({ email }) => email === data.email) == true
+          ) {
+            // Like Post
+            PostsModel.updateOne(
+              { post_path: params.post_path },
+              {
+                $push: {
+                  post_likes: {
+                    email: data.email,
+                  },
+                },
+              },
+              (err) => {
+                if (err) {
+                  res.json({
+                    code: 500,
+                    message: "an error occurred on the server",
+                  });
+                  console.error("Erorr => ", err);
+                  return next();
+                }
+                res.json({
+                  code: 200,
+                  message: "liked",
+                });
+                return next();
+              }
+            );
+          } else {
+            // DisLike Post
+            PostsModel.updateOne(
+              { post_path: params.post_path },
+              {
+                $pull: {
+                  post_likes: {
+                    email: data.email,
+                  },
+                },
+              },
+              (err) => {
+                if (err) {
+                  res.json({
+                    code: 500,
+                    message: "an error occurred on the server",
+                  });
+                  console.error("Erorr => ", err);
+                  return next();
+                }
+                res.json({
+                  code: 200,
+                  message: "disliked",
+                });
+                return next();
+              }
+            );
+          }
+        });
+      });
+    });
+  } else {
+    res.json({
+      code: 400,
+      message: "fields incorrect",
+    });
+    return next();
+  }
+  AuthToken(params.token);
 });
 
 module.exports = router;
