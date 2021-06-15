@@ -54,6 +54,7 @@ function getPost(post_path, getforuser, email) {
     ) {
       const post = {
         post_header: findedPost.post_header,
+        post_content: findedPost.post_content,
         post_cover_img: findedPost.post_cover_img,
         post_cover_text: findedPost.post_cover_text,
         post_publish_date: findedPost.post_publish_date,
