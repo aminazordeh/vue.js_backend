@@ -5,7 +5,7 @@ const UsersModel = require("../models/Users");
 const persianDate = require("persian-date");
 const settings = require("../settings");
 const jwt = require("jsonwebtoken");
-const bcryot = require("bcrypt");
+const bcrypt = require("bcrypt");
 const AuthToken = require("../modules/AuthToken/AuthToken");
 const { userLogin, checkUserExist } = require("../modules/userLogin/userLogin");
 
@@ -40,7 +40,7 @@ function saveState(req, res, post_author) {
   });
 }
 
-function getPost(post_path, getforuser, email) {
+function getPost(post_path, getforuser, __email) {
   return new Promise(async (exist, not_exist) => {
     const findedPost = await PostsModel.findOne({
       post_path: String(post_path).trim(),
@@ -60,8 +60,8 @@ function getPost(post_path, getforuser, email) {
         post_publish_date: findedPost.post_publish_date,
         post_author: findedPost.post_author,
         post_path: findedPost.post_path,
-        post_likes: "",
-        you_are_liked_this_post: "undefined",
+        post_likes: false,
+        you_are_liked_this_post: false,
         post_comments: findedPost.post_comments,
       };
       if (
@@ -71,15 +71,14 @@ function getPost(post_path, getforuser, email) {
       ) {
         post.post_likes = findedPost.post_likes;
       } else {
-        if (email != undefined && email != null && email != "") {
+        if (__email != undefined && __email != null && __email != "") {
           const likes = findedPost.post_likes;
           if (
-            likes.find(({ email }) => email === email) == undefined ||
-            likes.find(({ email }) => email === email) == true
+            likes.find(({ email }) => email === __email) != undefined
           ) {
-            post.you_are_liked_this_post = false;
-          } else {
             post.you_are_liked_this_post = true;
+          } else {
+            post.you_are_liked_this_post = false;
           }
         }
         post.post_likes = findedPost.post_likes.length;
@@ -94,6 +93,15 @@ function getPost(post_path, getforuser, email) {
 router.get("/", async (req, res, next) => {
   const posts = await PostsModel.find({
     post_publish: true,
+  });
+  res.json({
+    code: 200,
+    data: posts,
+  });
+});
+
+router.get("/get_likes", async (req, res, next) => {
+  const posts = await PostsModel.find({
   });
   res.json({
     code: 200,
@@ -143,7 +151,7 @@ router.post("/new_post", async (req, res, next) => {
   const user = {
     email: req.body.email,
     password: req.body.password,
-    user_token: req.body.user_token,
+    token: req.body.token,
   };
   const post = {
     post_header: req.body.post_header,
@@ -167,7 +175,7 @@ router.post("/new_post", async (req, res, next) => {
     user.password != "" &&
     user.password != undefined
   ) {
-    AuthToken(user.user_token, req, res, next).then(async () => {
+    AuthToken(user.token, req, res, next).then(async () => {
       // Valid
       userLogin(user.email, user.password, req, res, next).then((data) => {
         if (data.access == "admin" || data.access == "writer") {
@@ -270,7 +278,7 @@ router.post("/like_post", (req, res, next) => {
                     code: 500,
                     message: "an error occurred on the server",
                   });
-                  console.error("Erorr => ", err);
+                  console.error("Error => ", err);
                   return next();
                 }
                 res.json({
@@ -297,7 +305,7 @@ router.post("/like_post", (req, res, next) => {
                     code: 500,
                     message: "an error occurred on the server",
                   });
-                  console.error("Erorr => ", err);
+                  console.error("Error => ", err);
                   return next();
                 }
                 res.json({
