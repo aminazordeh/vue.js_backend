@@ -100,15 +100,6 @@ router.get("/", async (req, res, next) => {
   });
 });
 
-router.get("/get_likes", async (req, res, next) => {
-  const posts = await PostsModel.find({
-  });
-  res.json({
-    code: 200,
-    data: posts,
-  });
-});
-
 router.post("/get_post", async (req, res, next) => {
   const post_path = req.body.post_path;
   const email = req.body.email;
