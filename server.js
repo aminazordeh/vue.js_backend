@@ -23,6 +23,7 @@ mongoose.connect("mongodb://localhost/devsparkle", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
   useCreateIndex: true,
+  useFindAndModify: false,
 });
 
 // Routes

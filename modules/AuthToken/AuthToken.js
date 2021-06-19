@@ -9,10 +9,10 @@ function not_valid(res, next) {
   return next();
 }
 
-function AuthToken(token, req, res, next) {
+function AuthToken(token, email, req, res, next) {
   return new Promise(async (valid) => {
     try {
-      const decoded_user_token = await jwt.verify(token, settings.jwt_password);
+      const decoded_user_token = await jwt.verify(token, email + settings.jwt_password);
 
       if (decoded_user_token != undefined && decoded_user_token != null) {
         valid();

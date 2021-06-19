@@ -14,7 +14,7 @@ const PostsSchema = mongoose.Schema({
     type: String,
     required: true,
   },
-  post_author: {
+  post_author_id: {
     type: String,
     required: true,
   },

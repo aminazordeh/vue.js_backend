@@ -203,23 +203,27 @@ router.post("/signin", (req, res, next) => {
       user.password != undefined
     ) {
       userLogin(user.email, user.password, req, res, next).then((data) => {
-        jwt.sign({ data: data }, settings.jwt_password, (err, token) => {
-          const user_info = {
-            full_name: data.full_name,
-            email: data.email,
-            password: data.password,
-            access: data.access,
-            bookmarks: data.bookmarks,
-            email_verified: data.email_verified,
-          };
-          res.json({
-            code: 200,
-            user_info: user_info,
-            token: token,
-          });
-          next();
-          return;
-        });
+        jwt.sign(
+          { data: data },
+          user.email + settings.jwt_password,
+          (err, token) => {
+            const user_info = {
+              full_name: data.full_name,
+              email: data.email,
+              password: data.password,
+              access: data.access,
+              bookmarks: data.bookmarks,
+              email_verified: data.email_verified,
+            };
+            res.json({
+              code: 200,
+              user_info: user_info,
+              token: token,
+            });
+            next();
+            return;
+          }
+        );
       });
     } else {
       res.json({
@@ -248,7 +252,7 @@ router.post("/auth/token", (req, res, next) => {
     params.token != null &&
     params.token != undefined
   ) {
-    AuthToken(params.token, req, res, next).then(() => {
+    AuthToken(params.token, params.email, req, res, next).then(() => {
       userLogin(params.email, params.password, req, res, next).then((data) => {
         res.json({
           code: 200,
@@ -295,7 +299,7 @@ router.post("/send/email/verification", (req, res, next) => {
           );
         }
       }
-      if (EmailVerifyToken != null && EmailVerifyToken != "") {
+      if (EmailverifyToken != null && EmailVerifyToken != "") {
         try {
           ejs.renderFile(
             process.cwd() + "/modules/mailService/template.ejs",
@@ -399,8 +403,6 @@ router.post("/verify/email", async (req, res, next) => {
         return;
       }
     });
-    return;
-    AuthToken(user.token, req, res, next).then(() => {});
   } else {
     res.json({
       code: 400,

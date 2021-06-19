@@ -26,10 +26,7 @@ function userLogin(email, password, req, res, next) {
             }
             bcrypt.compare(password, data.password, function (err, result) {
               if (result) {
-                if (
-                  data.email_verified != undefined &&
-                  data.email_verified == true
-                ) {
+                if (data.email_verified != undefined && data.email_verified == true) {
                   todo(data);
                 } else {
                   res.json({
