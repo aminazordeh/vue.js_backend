@@ -22,9 +22,20 @@
     "email-deep-validator": "^3.3.0",
     "express": "^4.17.1",
     "jsonwebtoken": "^8.5.1",
+    "mongodb": "^3.6.9",
     "mongoose": "^5.12.10",
     "nodemailer": "^5.0.0",
+    "nodemon": "^2.0.7",
     "persian-date": "^1.1.0",
     "request": "^2.88.2"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tahadostifam/devsparkle-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tahadostifam/devsparkle-backend/issues"
+  },
+  "homepage": "https://github.com/tahadostifam/devsparkle-backend#readme"
 }
